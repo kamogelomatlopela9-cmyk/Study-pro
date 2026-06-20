@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lockedin</title>
+<style>
+  :root {
+    --ink: #15213d;
+    --ink-light: #1e2c52;
+    --gold: #f2a93b;
+    --paper: #f4efe3;
+    --slate: #8a94b0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--ink);
+    color: var(--paper);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--slate);
+    font-size: 0.85rem;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--ink-light);
+    border: 1px solid rgba(138, 148, 176, 0.25);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card h2 {
+    font-size: 1rem;
+    margin: 0 0 14px 0;
+    color: var(--paper);
+  }
+
+  input, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(138, 148, 176, 0.4);
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.95rem;
+    font-family: inherit;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 70px;
+  }
+
+  input:focus, textarea:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: 1px;
+  }
+
+  button {
+    width: 100%;
+    padding: 11px;
+    border: none;
+    border-radius: 8px;
+    background: var(--gold);
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #status-msg {
+    font-size: 0.85rem;
+    color: var(--gold);
+    text-align: center;
+    min-height: 18px;
+    margin-bottom: 4px;
+  }
+
+  .post {
+    border-bottom: 1px solid rgba(138, 148, 176, 0.2);
+    padding: 12px 0;
+  }
+
+  .post:last-child { border-bottom: none; }
+
+  .post .meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--slate);
+    margin-bottom: 4px;
+  }
+
+  .post .content {
+    font-size: 0.92rem;
+    line-height: 1.4;
+  }
+
+  .hidden { display: none; }
+
+  #user-pill {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--slate);
+    margin-bottom: 16px;
+  }
+
+  #user-pill span {
+    color: var(--gold);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Lockedin</h1>
+  <p class="subtitle">Log in, post an update, see the feed.</p>
+
+  <p id="status-msg"></p>
+
+  <!-- Login / signup card -->
+  <div class="card" id="auth-card">
+    <h2>Log in or create an account</h2>
+    <input type="text" id="username" placeholder="Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button id="login-btn">Log in</button>
+    <button id="signup-btn" class="secondary">Sign up</button>
+  </div>
+
+  <!-- Logged-in view -->
+  <div id="app-section" class="hidden">
+    <p id="user-pill">Logged in as <span id="current-username"></span> · <a href="#" id="logout-link" style="color:var(--slate);">log out</a></p>
+
+    <div class="card">
+      <h2>New post</h2>
+      <textarea id="post-content" placeholder="What's on your mind?"></textarea>
+      <button id="post-btn">Post</button>
+    </div>
+
+    <div class="card">
+      <h2>Feed</h2>
+      <div id="feed"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Swap this for your real Render URL once deployed
+  const API_BASE_URL = "https://your-app-name.onrender.com";
+
+  let currentUser = JSON.parse(localStorage.getItem("currentUser") || "null");
+
+  const statusMsg = document.getElementById("status-msg");
+  const authCard = document.getElementById("auth-card");
+  const appSection = document.getElementById("app-section");
+  const currentUsernameEl = document.getElementById("current-username");
+  const feedEl = document.getElementById("feed");
+
+  function showStatus(msg, isError = false) {
+    statusMsg.textContent = msg;
+    statusMsg.style.color = isError ? "#e8623d" : "var(--gold)";
+  }
+
+  function renderAuthState() {
+    if (currentUser) {
+      authCard.classList.add("hidden");
+      appSection.classList.remove("hidden");
+      currentUsernameEl.textContent = currentUser.username;
+      loadFeed();
+    } else {
+      authCard.classList.remove("hidden");
+      appSection.classList.add("hidden");
+    }
+  }
+
+  async function signup() {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    if (!username || !password) return showStatus("Enter a username and password", true);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showStatus(data.error || "Signup failed", true);
+
+      showStatus("Account created. Logging you in...");
+      await login();
+    } catch (err) {
+      showStatus("Could not reach the server", true);
+    }
+  }
+
+  async function login() {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    if (!username || !password) return showStatus("Enter a username and password", true);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showStatus(data.error || "Login failed", true);
+
+      currentUser = data;
+      localStorage.setItem("currentUser", JSON.stringify(currentUser));
+      showStatus("");
+      renderAuthState();
+    } catch (err) {
+      showStatus("Could not reach the server", true);
+    }
+  }
+
+  function logout() {
+    currentUser = null;
+    localStorage.removeItem("currentUser");
+    renderAuthState();
+  }
+
+  async function createPost() {
+    const content = document.getElementById("post-content").value.trim();
+    if (!content) return showStatus("Write something first", true);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/posts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: currentUser.id, content }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showStatus(data.error || "Could not post", true);
+
+      document.getElementById("post-content").value = "";
+      showStatus("Posted.");
+      loadFeed();
+    } catch (err) {
+      showStatus("Could not reach the server", true);
+    }
+  }
+
+  async function loadFeed() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/posts`);
+      const posts = await res.json();
+      if (!res.ok) return showStatus("Could not load feed", true);
+
+      feedEl.innerHTML = posts
+        .map(
+          (p) => `
+        <div class="post">
+          <div class="meta">
+            <span>${p.username}</span>
+            <span>${new Date(p.created_at).toLocaleString()}</span>
+          </div>
+          <div class="content">${escapeHtml(p.content)}</div>
+        </div>`
+        )
+        .join("");
+    } catch (err) {
+      showStatus("Could not reach the server", true);
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  document.getElementById("login-btn").addEventListener("click", login);
+  document.getElementById("signup-btn").addEventListener("click", signup);
+  document.getElementById("post-btn").addEventListener("click", createPost);
+  document.getElementById("logout-link").addEventListener("click", (e) => {
+    e.preventDefault();
+    logout();
+  });
+
+  renderAuthState();
+</script>
+</body>
+</html>
